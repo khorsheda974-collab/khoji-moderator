@@ -1,4 +1,4 @@
-name: build-no-lib-final
+name: build-manual-aapt2-final
 on: [push]
 jobs:
   build:
@@ -10,36 +10,21 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Build APK No External Libs
+      - name: Build APK Manually With AAPT2
         run: |
-          rm -rf app build .gradle
+          export ANDROID_HOME=$ANDROID_SDK_ROOT
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/33.0.1:$PATH
+          
+          yes | sdkmanager --licenses || true
+          sdkmanager --install "platforms;android-33" "build-tools;33.0.1"
+          
+          rm -rf app build
           mkdir -p app/src/main/java/com/aisupplier/bot
           mkdir -p app/src/main/res/values
+          mkdir -p build/gen build/obj build/apk
           
-          echo "include ':app'" > settings.gradle
-          
-          cat > build.gradle << 'EOF'
-          buildscript {
-              repositories { google(); mavenCentral() }
-              dependencies { classpath 'com.android.tools.build:gradle:7.4.2' }
-          }
-          allprojects { repositories { google(); mavenCentral() } }
-          EOF
-          
-          cat > app/build.gradle << 'EOF'
-          apply plugin: 'com.android.application'
-          android {
-              compileSdkVersion 33
-              buildToolsVersion "33.0.1"
-              defaultConfig {
-                  applicationId "com.aisupplier.bot"
-                  minSdkVersion 24
-                  targetSdkVersion 33
-                  versionCode 15
-                  versionName "15.0"
-              }
-          }
-          EOF
+          ANDROID_JAR=$ANDROID_HOME/platforms/android-33/android.jar
+          BUILD_TOOLS=$ANDROID_HOME/build-tools/33.0.1
           
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
@@ -66,22 +51,14 @@ jobs:
           public class MainActivity extends Activity {
               protected void onCreate(Bundle b) {
                   super.onCreate(b);
-                  LinearLayout lay = new LinearLayout(this);
-                  lay.setOrientation(LinearLayout.VERTICAL);
-                  lay.setPadding(50,50,50,50);
-                  EditText api = new EditText(this); api.setHint("Gemini API Key - paste here");
-                  EditText biz = new EditText(this); biz.setHint("Business Info - ex: Ami 3pc sell kori, price 1200");
-                  biz.setMinLines(3);
-                  Button btn = new Button(this); btn.setText("Save & Enable Notification Access");
-                  lay.addView(api); lay.addView(biz); lay.addView(btn);
-                  setContentView(lay);
+                  LinearLayout lay = new LinearLayout(this); lay.setOrientation(LinearLayout.VERTICAL); lay.setPadding(50,50,50,50);
+                  EditText api = new EditText(this); api.setHint("Gemini API Key");
+                  EditText biz = new EditText(this); biz.setHint("Business Info"); biz.setMinLines(3);
+                  Button btn = new Button(this); btn.setText("Save & Enable");
+                  lay.addView(api); lay.addView(biz); lay.addView(btn); setContentView(lay);
                   SharedPreferences pref=getSharedPreferences("bot", MODE_PRIVATE);
                   api.setText(pref.getString("api","")); biz.setText(pref.getString("biz",""));
-                  btn.setOnClickListener(v->{
-                      pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply();
-                      startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
-                      Toast.makeText(this,"Saved! Now enable Real AI Bot",Toast.LENGTH_LONG).show();
-                  });
+                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved! Enable access",Toast.LENGTH_LONG).show(); });
               }
           }
           EOF
@@ -95,17 +72,16 @@ jobs:
                   if(!sbn.getPackageName().contains("whatsapp")) return;
                   SharedPreferences pref=getSharedPreferences("bot", MODE_PRIVATE);
                   String apiKey=pref.getString("api",""); if(apiKey.isEmpty()) return;
-                  CharSequence cs=sbn.getNotification().extras.getCharSequence("android.text");
-                  String text=cs!=null?cs.toString():""; if(text.isEmpty() || text.contains("[AI Bot]")) return;
+                  CharSequence cs=sbn.getNotification().extras.getCharSequence("android.text"); String text=cs!=null?cs.toString():""; if(text.isEmpty() || text.contains("[AI Bot]")) return;
                   String biz=pref.getString("biz","online shop");
                   new Thread(()->{
                       try{
-                          String prompt="You are AI assistant for: "+biz+". Customer says: "+text+". Reply short friendly Bangla. Add [AI Bot] at end.";
+                          String prompt="You are AI for: "+biz+". Customer: "+text+". Reply short Bangla, add [AI Bot]";
                           JSONObject j=new JSONObject(); j.put("contents", new JSONArray().put(new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", prompt)))));
                           URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="+apiKey);
                           HttpURLConnection conn=(HttpURLConnection)url.openConnection(); conn.setRequestMethod("POST"); conn.setRequestProperty("Content-Type","application/json"); conn.setDoOutput(true);
                           OutputStream os=conn.getOutputStream(); os.write(j.toString().getBytes()); os.close();
-                          BufferedReader br=new BufferedReader(new InputStreamReader(conn.getInputStream())); StringBuilder sb=new StringBuilder(); String line; while((line=br.readLine())!=null) sb.append(line);
+                          BufferedReader br=new BufferedReader(new InputStreamReader(conn.getInputStream())); StringBuilder sb=new StringBuilder(); String l; while((l=br.readLine())!=null) sb.append(l);
                           String reply=new JSONObject(sb.toString()).getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
                           android.app.Notification.Action act=sbn.getNotification().actions[sbn.getNotification().actions.length-1];
                           Intent intent=new Intent(); Bundle bundle=new Bundle(); bundle.putCharSequence(act.getRemoteInputs()[0].getResultKey(), reply);
@@ -116,12 +92,26 @@ jobs:
           }
           EOF
           
-          wget -q https://services.gradle.org/distributions/gradle-7.6.3-bin.zip
-          unzip -q gradle-7.6.3-bin.zip
-          ./gradle-7.6.3/bin/gradle :app:assembleDebug --no-daemon
-          ls -lh app/build/outputs/apk/debug/
+          echo "=== Compiling resources ==="
+          $BUILD_TOOLS/aapt2 compile --dir app/src/main/res -o build/res.zip
+          $BUILD_TOOLS/aapt2 link -I $ANDROID_JAR --manifest app/src/main/AndroidManifest.xml -o build/apk/unsigned-unaligned.apk build/res.zip --auto-add-overlay --java build/gen
+          
+          echo "=== Compiling Java ==="
+          javac -source 17 -target 17 -classpath $ANDROID_JAR -d build/obj $(find app/src/main/java -name "*.java") $(find build/gen -name "*.java")
+          
+          echo "=== DEX ==="
+          $BUILD_TOOLS/d8 --output build/apk/ build/obj/com/aisupplier/bot/*.class
+          $BUILD_TOOLS/aapt2 add build/apk/unsigned-unaligned.apk build/apk/classes.dex
+          
+          echo "=== Align and Sign ==="
+          $BUILD_TOOLS/zipalign -f 4 build/apk/unsigned-unaligned.apk build/apk/unsigned.apk
+          keytool -genkey -v -keystore build/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Debug, OU=Debug, O=Debug, L=Debug, S=Debug, C=US"
+          $BUILD_TOOLS/apksigner sign --ks build/debug.keystore --ks-pass pass:android --key-pass pass:android --out build/apk/Real-AI-Bot-FINAL.apk build/apk/unsigned.apk
+          
+          ls -lh build/apk/*.apk
+          $BUILD_TOOLS/aapt2 dump badging build/apk/Real-AI-Bot-FINAL.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Real-AI-APK-NoLib-Working
-          path: app/build/outputs/apk/debug/*.apk
+          name: Real-AI-Bot-FINAL-Working
+          path: build/apk/Real-AI-Bot-FINAL.apk
