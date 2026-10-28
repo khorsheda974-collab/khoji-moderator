@@ -1,4 +1,4 @@
-name: build-apk-fixed
+name: build-apk-final
 on: [push]
 jobs:
   build:
@@ -9,9 +9,11 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Make APK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Make Real AI APK
         run: |
-          rm -rf app build .gradle
+          rm -rf app build .gradle gradle
           mkdir -p app/src/main/java/com/aisupplier/bot
           mkdir -p app/src/main/res/layout
           
@@ -19,39 +21,33 @@ jobs:
           
           cat > build.gradle << 'EOF'
           buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
               dependencies {
-                  classpath 'com.android.tools.build:gradle:8.2.2'
+                  classpath 'com.android.tools.build:gradle:8.1.4'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
               }
           }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
+          allprojects { repositories { google(); mavenCentral() } }
           EOF
           
           cat > app/build.gradle << 'EOF'
           apply plugin: 'com.android.application'
+          apply plugin: 'org.jetbrains.kotlin.android'
           android {
+              namespace 'com.aisupplier.bot'
               compileSdk 34
               defaultConfig {
                   applicationId "com.aisupplier.bot"
                   minSdk 24
                   targetSdk 34
-                  versionCode 5
-                  versionName "5.0"
+                  versionCode 6
+                  versionName "6.0"
               }
-              buildTypes {
-                  release { minifyEnabled false }
-              }
+              compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
           }
           dependencies {
               implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+              implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.0'
           }
           EOF
           
@@ -59,24 +55,12 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.INTERNET"/>
-            <application android:label="AI Bot">
-              <activity android:name=".MainActivity" android:exported="true">
-                <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-              </activity>
-              <service android:name=".AutoReplyService" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">
-                <intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter>
-              </service>
-            </application>
+            <application android:label="AI Bot"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity><service android:name=".AutoReplyService" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true"><intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter></service></application>
           </manifest>
           EOF
           
           cat > app/src/main/res/layout/activity_main.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp">
-            <EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Gemini API Key"/>
-            <EditText android:id="@+id/biz" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="ব্যবসার তথ্য" android:minLines="3"/>
-            <Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save"/>
-          </LinearLayout>
+          <?xml version="1.0" encoding="utf-8"?><LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp"><EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Gemini API Key"/><EditText android:id="@+id/biz" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Business Info" android:minLines="3"/><Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save &amp; Enable"/></LinearLayout>
           EOF
           
           cat > app/src/main/java/com/aisupplier/bot/MainActivity.kt << 'EOF'
@@ -86,20 +70,12 @@ jobs:
           import android.widget.*
           import androidx.appcompat.app.AppCompatActivity
           class MainActivity : AppCompatActivity() {
-            override fun onCreate(savedInstanceState: Bundle?) {
-              super.onCreate(savedInstanceState)
-              setContentView(R.layout.activity_main)
-              val api = findViewById<EditText>(R.id.apiKey)
-              val biz = findViewById<EditText>(R.id.biz)
-              val btn = findViewById<Button>(R.id.save)
+            override fun onCreate(b: Bundle?) {
+              super.onCreate(b); setContentView(R.layout.activity_main)
+              val api = findViewById<EditText>(R.id.apiKey); val biz = findViewById<EditText>(R.id.biz); val btn = findViewById<Button>(R.id.save)
               val pref = getSharedPreferences("bot", MODE_PRIVATE)
-              api.setText(pref.getString("api",""))
-              biz.setText(pref.getString("biz",""))
-              btn.setOnClickListener {
-                pref.edit().putString("api", api.text.toString()).putString("biz", biz.text.toString()).apply()
-                startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
-                Toast.makeText(this, "Save হয়েছে", Toast.LENGTH_LONG).show()
-              }
+              api.setText(pref.getString("api","")); biz.setText(pref.getString("biz",""))
+              btn.setOnClickListener { pref.edit().putString("api", api.text.toString()).putString("biz", biz.text.toString()).apply(); startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this, "Saved", Toast.LENGTH_LONG).show() }
             }
           }
           EOF
@@ -119,9 +95,9 @@ jobs:
               if (sbn.packageName != "com.whatsapp" && sbn.packageName != "com.whatsapp.w4b") return
               val pref = getSharedPreferences("bot", Context.MODE_PRIVATE)
               val apiKey = pref.getString("api","") ?: ""; if (apiKey.isEmpty()) return
-              val text = sbn.notification.extras.getCharSequence("android.text")?.toString() ?: ""; if (text.isEmpty()) return
+              val text = sbn.notification.extras.getCharSequence("android.text")?.toString() ?: ""; if (text.isEmpty() || text.length < 2) return
               val biz = pref.getString("biz","online shop")
-              val prompt = "You are AI for: $biz. Customer says: $text. Reply in Bangla short friendly, add [AI Bot] at end."
+              val prompt = "You are AI support for: $biz. Customer: $text. Reply short Bangla friendly, add [AI Bot] at end."
               val json = JSONObject().put("contents", org.json.JSONArray().put(JSONObject().put("parts", org.json.JSONArray().put(JSONObject().put("text", prompt)))))
               val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey").post(RequestBody.create("application/json".toMediaType(), json.toString())).build()
               client.newCall(req).enqueue(object: Callback {
@@ -141,11 +117,12 @@ jobs:
           }
           EOF
           
-          wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
-          unzip -q gradle-8.5-bin.zip
-          ./gradle-8.5/bin/gradle :app:assembleDebug --no-daemon
+          chmod +x gradlew 2>/dev/null || true
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
+          unzip -q gradle-8.4-bin.zip
+          ./gradle-8.4/bin/gradle :app:assembleDebug --no-daemon --stacktrace
           
       - uses: actions/upload-artifact@v4
         with:
-          name: Real-AI-APK
+          name: Real-AI-APK-Fixed
           path: app/build/outputs/apk/debug/*.apk
