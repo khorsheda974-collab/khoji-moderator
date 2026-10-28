@@ -1,4 +1,4 @@
-name: build-nolib-compatible-final
+name: build-fixed-java17
 on: [push]
 jobs:
   build:
@@ -8,22 +8,27 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
-      - name: Build Compatible NoLib APK
+          java-version: '17'
+      - name: Build Fixed APK
         run: |
           export ANDROID_HOME=$ANDROID_SDK_ROOT
-          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/30.0.3:$PATH
-          sdkmanager --install "platforms;android-30" "build-tools;30.0.3" || true
+          # Find aapt2 and d8 automatically - fixes your error
+          AAPT2=$(find $ANDROID_HOME/build-tools -name aapt2 | sort -V | tail -n1)
+          D8=$(find $ANDROID_HOME/build-tools -name d8 | sort -V | tail -n1)
+          ZIPALIGN=$(find $ANDROID_HOME/build-tools -name zipalign | sort -V | tail -n1)
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n1)
+          ANDROID_JAR=$ANDROID_HOME/platforms/android-33/android.jar
+          echo "Using AAPT2: $AAPT2"
+          echo "Using D8: $D8"
+          
           rm -rf build app
           mkdir -p app/src/main/java/com/aisupplier/bot
           mkdir -p app/src/main/res/values
-          mkdir -p build/gen build/obj build/apk
-          ANDROID_JAR=$ANDROID_HOME/platforms/android-30/android.jar
-          BUILD_TOOLS=$ANDROID_HOME/build-tools/30.0.3
-
+          mkdir -p build/obj build/apk
+          
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.aisupplier.bot.compat">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.aisupplier.bot.fixed">
             <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30"/>
             <uses-permission android:name="android.permission.INTERNET"/>
             <application android:label="Real AI Bot">
@@ -43,12 +48,12 @@ jobs:
                   super.onCreate(b);
                   LinearLayout lay = new LinearLayout(this); lay.setOrientation(LinearLayout.VERTICAL); lay.setPadding(50,50,50,50);
                   EditText api = new EditText(this); api.setHint("Gemini API Key");
-                  EditText biz = new EditText(this); biz.setHint("Business Info ex: 3pc 1200tk"); biz.setMinLines(3);
+                  EditText biz = new EditText(this); biz.setHint("Business Info"); biz.setMinLines(3);
                   Button btn = new Button(this); btn.setText("Save & Enable");
                   lay.addView(api); lay.addView(biz); lay.addView(btn); setContentView(lay);
                   SharedPreferences pref=getSharedPreferences("bot", MODE_PRIVATE);
                   api.setText(pref.getString("api","")); biz.setText(pref.getString("biz",""));
-                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved! Enable Real AI Bot",Toast.LENGTH_LONG).show(); });
+                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved!",Toast.LENGTH_LONG).show(); });
               }
           }
           EOF
@@ -79,23 +84,18 @@ jobs:
           }
           EOF
 
-          echo "=== BUILD RES ==="
-          $BUILD_TOOLS/aapt2 compile --dir app/src/main/res -o build/res.zip
-          $BUILD_TOOLS/aapt2 link -I $ANDROID_JAR --manifest app/src/main/AndroidManifest.xml --min-sdk-version 21 --target-sdk-version 30 -o build/apk/base.apk build/res.zip --auto-add-overlay
-
-          echo "=== BUILD DEX ==="
+          echo "=== BUILD ==="
+          $AAPT2 compile --dir app/src/main/res -o build/res.zip
+          $AAPT2 link -I $ANDROID_JAR --manifest app/src/main/AndroidManifest.xml --min-sdk-version 21 --target-sdk-version 30 -o build/apk/base.apk build/res.zip --auto-add-overlay
           javac -source 8 -target 8 -classpath $ANDROID_JAR -d build/obj $(find app/src/main/java -name "*.java")
-          $BUILD_TOOLS/d8 --min-api 21 --output build/apk/ build/obj/com/aisupplier/bot/*.class
-
-          echo "=== ADD DEX & SIGN ==="
+          $D8 --min-api 21 --output build/apk/ build/obj/com/aisupplier/bot/*.class
           cd build/apk && zip -u base.apk classes.dex && cd ../..
-          $BUILD_TOOLS/zipalign -f 4 build/apk/base.apk build/apk/unsigned.apk
+          $ZIPALIGN -f 4 build/apk/base.apk build/apk/unsigned.apk
           keytool -genkey -v -keystore build/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Debug" -noprompt
-          $BUILD_TOOLS/apksigner sign --v1-signing-enabled true --v2-signing-enabled true --ks build/debug.keystore --ks-pass pass:android --key-pass pass:android --out build/apk/Real-AI-Bot-COMPAT.apk build/apk/unsigned.apk
-          $BUILD_TOOLS/apksigner verify --verbose build/apk/Real-AI-Bot-COMPAT.apk
+          $APKSIGNER sign --v1-signing-enabled true --v2-signing-enabled true --ks build/debug.keystore --ks-pass pass:android --key-pass pass:android --out build/apk/Real-AI-Bot-FIXED.apk build/apk/unsigned.apk
+          $APKSIGNER verify --verbose build/apk/Real-AI-Bot-FIXED.apk
           ls -lh build/apk/*.apk
-
       - uses: actions/upload-artifact@v4
         with:
-          name: Real-AI-Bot-COMPAT-FINAL
-          path: build/apk/Real-AI-Bot-COMPAT.apk
+          name: Real-AI-Bot-FIXED-FINAL
+          path: build/apk/Real-AI-Bot-FIXED.apk
