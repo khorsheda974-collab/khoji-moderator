@@ -1,4 +1,4 @@
-name: build-crash-fix
+name: build-xml-fix
 on: [push]
 jobs:
   build:
@@ -9,7 +9,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Build Crash Free APK
+      - name: Build Fixed XML APK
         run: |
           export ANDROID_HOME=$ANDROID_SDK_ROOT
           export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
@@ -28,9 +28,7 @@ jobs:
             <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30"/>
             <uses-permission android:name="android.permission.INTERNET"/>
             <application android:label="Real AI Bot" android:theme="@android:style/Theme.Light">
-              <activity android:name=".MainActivity" android:exported="true" android:theme="@android:style/Theme.Light">
-                <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-              </activity>
+              <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
               <service android:name=".AutoReplyService" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true"><intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter></service>
             </application>
           </manifest>
@@ -38,12 +36,32 @@ jobs:
           echo '<resources><string name="app_name">Real AI Bot</string></resources>' > app/src/main/res/values/strings.xml
           cat > app/src/main/res/layout/activity_main.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp">
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Real AI Bot - Setup" android:textSize="20sp" android:padding="8dp"/>
-            <EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Gemini API Key - paste here"/>
-            <EditText android:id="@+id/biz" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Business Info ex: 3pc 1200tk" android:minLines="3" android:gravity="top"/>
-            <Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save & Enable Bot"/>
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save er por Notification access ON korte hobe" android:padding="8dp"/>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:padding="16dp">
+              <TextView
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="Real AI Bot Setup"
+                  android:textSize="20sp"/>
+              <EditText
+                  android:id="@+id/apiKey"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:hint="Gemini API Key"/>
+              <EditText
+                  android:id="@+id/biz"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:hint="Business Info"
+                  android:minLines="3"/>
+              <Button
+                  android:id="@+id/save"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="Save"/>
           </LinearLayout>
           EOF
           cat > app/src/main/java/com/aisupplier/bot/MainActivity.java << 'EOF'
@@ -65,15 +83,13 @@ jobs:
                       api.setText(pref.getString("api",""));
                       biz.setText(pref.getString("biz",""));
                       btn.setOnClickListener(v->{
-                          try{
-                              pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply();
-                              Toast.makeText(this,"Saved! Now Enable Notification Access",Toast.LENGTH_LONG).show();
-                              startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
-                          }catch(Exception e){ Toast.makeText(this,"Error: "+e.getMessage(),Toast.LENGTH_LONG).show(); }
+                          pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply();
+                          Toast.makeText(this,"Saved",Toast.LENGTH_LONG).show();
+                          startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
                       });
                   } catch(Exception e){
                       TextView tv=new TextView(this);
-                      tv.setText("Error: "+e.toString());
+                      tv.setText("Error "+e.toString());
                       setContentView(tv);
                   }
               }
@@ -88,7 +104,6 @@ jobs:
                   try{
                   if(!sbn.getPackageName().contains("whatsapp")) return;
                   if(sbn.getNotification()==null) return;
-                  if(sbn.getNotification().extras==null) return;
                   Object txtObj=sbn.getNotification().extras.getCharSequence("android.text");
                   if(txtObj==null) return;
                   String text=txtObj.toString(); if(text.isEmpty() || text.contains("[AI Bot]")) return;
@@ -96,7 +111,7 @@ jobs:
                   String apiKey=pref.getString("api",""); if(apiKey.isEmpty()) return;
                   String biz=pref.getString("biz","online shop");
                   new Thread(()->{ try{
-                      String prompt="You are AI for: "+biz+". Customer: "+text+". Reply short Bangla friendly, add [AI Bot] at end. Max 2 lines.";
+                      String prompt="You are AI for "+biz+". Customer says "+text+". Reply short Bangla friendly add [AI Bot]";
                       JSONObject j=new JSONObject(); j.put("contents", new JSONArray().put(new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", prompt)))));
                       URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="+apiKey);
                       HttpURLConnection conn=(HttpURLConnection)url.openConnection(); conn.setRequestMethod("POST"); conn.setRequestProperty("Content-Type","application/json"); conn.setDoOutput(true);
@@ -104,10 +119,7 @@ jobs:
                       if(conn.getResponseCode()!=200) return;
                       BufferedReader br=new BufferedReader(new InputStreamReader(conn.getInputStream())); StringBuilder sb=new StringBuilder(); String l; while((l=br.readLine())!=null) sb.append(l);
                       String reply=new JSONObject(sb.toString()).getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
-                      if(sbn.getNotification().actions==null) return;
-                      if(sbn.getNotification().actions.length==0) return;
                       android.app.Notification.Action act=sbn.getNotification().actions[sbn.getNotification().actions.length-1];
-                      if(act.getRemoteInputs()==null) return;
                       Intent intent=new Intent(); Bundle bundle=new Bundle(); bundle.putCharSequence(act.getRemoteInputs()[0].getResultKey(), reply);
                       android.app.RemoteInput.addResultsToIntent(act.getRemoteInputs(), intent, bundle); act.actionIntent.send(this,0,intent);
                   }catch(Exception e){} }).start();
@@ -117,15 +129,14 @@ jobs:
           EOF
           $AAPT2 compile --dir app/src/main/res -o build/res.zip
           $AAPT2 link -I $ANDROID_JAR --manifest app/src/main/AndroidManifest.xml --min-sdk-version 21 --target-sdk-version 30 -o build/apk/base.apk build/res.zip --auto-add-overlay
-          javac -source 8 -target 8 -classpath $ANDROID_JAR -d build/obj $(find app/src/main/java -name "*.java") -d build/obj
+          javac -source 8 -target 8 -classpath $ANDROID_JAR -d build/obj $(find app/src/main/java -name "*.java")
           $D8 --min-api 21 --output build/apk/ build/obj/com/aisupplier/bot/*.class
           cd build/apk && zip -u base.apk classes.dex && cd ../..
           $ZIPALIGN -f 4 build/apk/base.apk build/apk/app.apk
           keytool -genkey -v -keystore build/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Debug" -noprompt
           $APKSIGNER sign --ks build/debug.keystore --ks-pass pass:android --key-pass pass:android --out build/final.apk build/apk/app.apk
           ls -lh build/final.apk
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: Real-AI-Bot-NoCrash
+          name: Real-AI-Bot-Fixed
           path: build/final.apk
