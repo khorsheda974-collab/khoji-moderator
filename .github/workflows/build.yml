@@ -1,4 +1,4 @@
-name: build-compatible-final
+name: build-nolib-compatible-final
 on: [push]
 jobs:
   build:
@@ -9,44 +9,24 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '11'
-      - name: Build APK API 30
+      - name: Build Compatible NoLib APK
         run: |
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-          cat > settings.gradle << 'EOF'
-          include ':app'
-          EOF
+          export ANDROID_HOME=$ANDROID_SDK_ROOT
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/30.0.3:$PATH
+          sdkmanager --install "platforms;android-30" "build-tools;30.0.3" || true
+          rm -rf build app
           mkdir -p app/src/main/java/com/aisupplier/bot
-          mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
-          cat > build.gradle << 'EOF'
-          buildscript {
-            repositories { google(); mavenCentral() }
-            dependencies { classpath 'com.android.tools.build:gradle:7.2.2' }
-          }
-          allprojects { repositories { google(); mavenCentral() } }
-          EOF
-          cat > app/build.gradle << 'EOF'
-          apply plugin: 'com.android.application'
-          android {
-            compileSdkVersion 30
-            buildToolsVersion "30.0.3"
-            defaultConfig {
-              applicationId "com.aisupplier.bot.compat"
-              minSdkVersion 21
-              targetSdkVersion 30
-              versionCode 19
-              versionName "19.0"
-            }
-          }
-          dependencies {
-            implementation 'androidx.appcompat:appcompat:1.3.1'
-          }
-          EOF
+          mkdir -p build/gen build/obj build/apk
+          ANDROID_JAR=$ANDROID_HOME/platforms/android-30/android.jar
+          BUILD_TOOLS=$ANDROID_HOME/build-tools/30.0.3
+
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.aisupplier.bot.compat">
+            <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30"/>
             <uses-permission android:name="android.permission.INTERNET"/>
-            <application android:label="Real AI Bot" android:theme="@style/Theme.AppCompat.Light">
+            <application android:label="Real AI Bot">
               <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
               <service android:name=".AutoReplyService" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true"><intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter></service>
             </application>
@@ -55,24 +35,20 @@ jobs:
           cat > app/src/main/res/values/strings.xml << 'EOF'
           <resources><string name="app_name">Real AI Bot</string></resources>
           EOF
-          cat > app/src/main/res/layout/activity_main.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp">
-            <EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Gemini API Key"/>
-            <EditText android:id="@+id/biz" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Business Info" android:minLines="3"/>
-            <Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save & Enable"/>
-          </LinearLayout>
-          EOF
           cat > app/src/main/java/com/aisupplier/bot/MainActivity.java << 'EOF'
           package com.aisupplier.bot;
-          import android.content.Intent; import android.content.SharedPreferences; import android.os.Bundle; import android.widget.*; import androidx.appcompat.app.AppCompatActivity;
-          public class MainActivity extends AppCompatActivity {
+          import android.app.Activity; import android.content.Intent; import android.content.SharedPreferences; import android.os.Bundle; import android.widget.*;
+          public class MainActivity extends Activity {
               protected void onCreate(Bundle b) {
-                  super.onCreate(b); setContentView(R.layout.activity_main);
-                  EditText api=findViewById(R.id.apiKey); EditText biz=findViewById(R.id.biz); Button btn=findViewById(R.id.save);
+                  super.onCreate(b);
+                  LinearLayout lay = new LinearLayout(this); lay.setOrientation(LinearLayout.VERTICAL); lay.setPadding(50,50,50,50);
+                  EditText api = new EditText(this); api.setHint("Gemini API Key");
+                  EditText biz = new EditText(this); biz.setHint("Business Info ex: 3pc 1200tk"); biz.setMinLines(3);
+                  Button btn = new Button(this); btn.setText("Save & Enable");
+                  lay.addView(api); lay.addView(biz); lay.addView(btn); setContentView(lay);
                   SharedPreferences pref=getSharedPreferences("bot", MODE_PRIVATE);
                   api.setText(pref.getString("api","")); biz.setText(pref.getString("biz",""));
-                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved!",Toast.LENGTH_LONG).show(); });
+                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved! Enable Real AI Bot",Toast.LENGTH_LONG).show(); });
               }
           }
           EOF
@@ -102,11 +78,24 @@ jobs:
               }
           }
           EOF
-          wget -q https://services.gradle.org/distributions/gradle-7.3.3-bin.zip
-          unzip -q gradle-7.3.3-bin.zip
-          ./gradle-7.3.3/bin/gradle :app:assembleDebug --no-daemon
-          ls -lh app/build/outputs/apk/debug/
+
+          echo "=== BUILD RES ==="
+          $BUILD_TOOLS/aapt2 compile --dir app/src/main/res -o build/res.zip
+          $BUILD_TOOLS/aapt2 link -I $ANDROID_JAR --manifest app/src/main/AndroidManifest.xml --min-sdk-version 21 --target-sdk-version 30 -o build/apk/base.apk build/res.zip --auto-add-overlay
+
+          echo "=== BUILD DEX ==="
+          javac -source 8 -target 8 -classpath $ANDROID_JAR -d build/obj $(find app/src/main/java -name "*.java")
+          $BUILD_TOOLS/d8 --min-api 21 --output build/apk/ build/obj/com/aisupplier/bot/*.class
+
+          echo "=== ADD DEX & SIGN ==="
+          cd build/apk && zip -u base.apk classes.dex && cd ../..
+          $BUILD_TOOLS/zipalign -f 4 build/apk/base.apk build/apk/unsigned.apk
+          keytool -genkey -v -keystore build/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Debug" -noprompt
+          $BUILD_TOOLS/apksigner sign --v1-signing-enabled true --v2-signing-enabled true --ks build/debug.keystore --ks-pass pass:android --key-pass pass:android --out build/apk/Real-AI-Bot-COMPAT.apk build/apk/unsigned.apk
+          $BUILD_TOOLS/apksigner verify --verbose build/apk/Real-AI-Bot-COMPAT.apk
+          ls -lh build/apk/*.apk
+
       - uses: actions/upload-artifact@v4
         with:
-          name: Real-AI-Bot-Compatible-1.8MB
-          path: app/build/outputs/apk/debug/*.apk
+          name: Real-AI-Bot-COMPAT-FINAL
+          path: build/apk/Real-AI-Bot-COMPAT.apk
