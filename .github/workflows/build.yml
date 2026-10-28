@@ -1,4 +1,4 @@
-name: build-apk-simple
+name: build-final-working
 on: [push]
 jobs:
   build:
@@ -9,51 +9,84 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Build Real AI APK
+      - name: Build APK
         run: |
+          echo "ANDROID_HOME is $ANDROID_HOME"
+          ls $ANDROID_HOME/platforms || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" || $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --sdk_root=$ANDROID_HOME || true
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          
           rm -rf app build .gradle
           mkdir -p app/src/main/java/com/aisupplier/bot
           mkdir -p app/src/main/res/layout
-          echo "include ':app'" > settings.gradle
-          cat > build.gradle << 'ENDOFFILE'
+          
+          cat > settings.gradle << 'EOF'
+          include ':app'
+          EOF
+          
+          cat > build.gradle << 'EOF'
           buildscript {
               repositories { google(); mavenCentral() }
-              dependencies { classpath 'com.android.tools.build:gradle:8.1.4'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.4'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10'
+              }
           }
           allprojects { repositories { google(); mavenCentral() } }
-          ENDOFFILE
-          cat > app/build.gradle << 'ENDOFFILE'
-          apply plugin: 'com.android.application'
-          apply plugin: 'org.jetbrains.kotlin.android'
+          EOF
+          
+          cat > app/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
           android {
               namespace 'com.aisupplier.bot'
               compileSdk 34
-              defaultConfig { applicationId "com.aisupplier.bot"; minSdk 24; targetSdk 34; versionCode 7; versionName "7.0" }
+              defaultConfig {
+                  applicationId "com.aisupplier.bot"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 8
+                  versionName "8.0"
+              }
               compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+              kotlinOptions { jvmTarget = '17' }
           }
           dependencies {
-              implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-              implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.0'
+              implementation 'androidx.core:core-ktx:1.12.0'
               implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.squareup.okhttp3:okhttp:4.12.0'
           }
-          ENDOFFILE
-          cat > app/src/main/AndroidManifest.xml << 'ENDOFFILE'
-          <?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><application android:label="AI Bot"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity><service android:name=".AutoReplyService" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true"><intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter></service></application></manifest>
-          ENDOFFILE
-          cat > app/src/main/res/layout/activity_main.xml << 'ENDOFFILE'
+          EOF
+          
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <application android:label="Real AI Bot">
+                  <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+                  <service android:name=".AutoReplyService" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true"><intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter></service>
+              </application>
+          </manifest>
+          EOF
+          
+          cat > app/src/main/res/layout/activity_main.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?><LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp"><EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Gemini API Key"/><EditText android:id="@+id/biz" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Business Info" android:minLines="3"/><Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save"/></LinearLayout>
-          ENDOFFILE
-          cat > app/src/main/java/com/aisupplier/bot/MainActivity.kt << 'ENDOFFILE'
+          EOF
+          
+          cat > app/src/main/java/com/aisupplier/bot/MainActivity.kt << 'EOF'
           package com.aisupplier.bot
           import android.content.Intent
           import android.os.Bundle
           import android.widget.*
           import androidx.appcompat.app.AppCompatActivity
           class MainActivity : AppCompatActivity() {
-            override fun onCreate(b: Bundle?) { super.onCreate(b); setContentView(R.layout.activity_main); val api=findViewById<EditText>(R.id.apiKey); val biz=findViewById<EditText>(R.id.biz); val btn=findViewById<Button>(R.id.save); val pref=getSharedPreferences("bot", MODE_PRIVATE); api.setText(pref.getString("api","")); biz.setText(pref.getString("biz","")); btn.setOnClickListener { pref.edit().putString("api",api.text.toString()).putString("biz",biz.text.toString()).apply(); startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved",Toast.LENGTH_LONG).show() } }
+              override fun onCreate(b: Bundle?) { super.onCreate(b); setContentView(R.layout.activity_main); val api=findViewById<EditText>(R.id.apiKey); val biz=findViewById<EditText>(R.id.biz); val btn=findViewById<Button>(R.id.save); val pref=getSharedPreferences("bot", MODE_PRIVATE); api.setText(pref.getString("api","")); biz.setText(pref.getString("biz","")); btn.setOnClickListener { pref.edit().putString("api",api.text.toString()).putString("biz",biz.text.toString()).apply(); startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved",Toast.LENGTH_LONG).show() } }
           }
-          ENDOFFILE
-          cat > app/src/main/java/com/aisupplier/bot/AutoReplyService.kt << 'ENDOFFILE'
+          EOF
+          
+          cat > app/src/main/java/com/aisupplier/bot/AutoReplyService.kt << 'EOF'
           package com.aisupplier.bot
           import android.content.Context
           import android.os.Bundle
@@ -63,30 +96,28 @@ jobs:
           import okhttp3.MediaType.Companion.toMediaType
           import org.json.JSONObject
           class AutoReplyService : NotificationListenerService() {
-            private val client=OkHttpClient()
-            override fun onNotificationPosted(sbn: StatusBarNotification) {
-              if(sbn.packageName!="com.whatsapp" && sbn.packageName!="com.whatsapp.w4b") return
-              val pref=getSharedPreferences("bot", Context.MODE_PRIVATE); val apiKey=pref.getString("api","")?:""; if(apiKey.isEmpty()) return
-              val text=sbn.notification.extras.getCharSequence("android.text")?.toString()?:""; if(text.isEmpty()) return
-              val biz=pref.getString("biz","online shop")
-              val prompt="You are AI for: $biz. Customer: $text. Reply short Bangla, add [AI Bot] at end."
-              val json=JSONObject().put("contents", org.json.JSONArray().put(JSONObject().put("parts", org.json.JSONArray().put(JSONObject().put("text", prompt)))))
-              val req=Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey").post(RequestBody.create("application/json".toMediaType(), json.toString())).build()
-              client.newCall(req).enqueue(object: Callback {
-                override fun onFailure(call: Call, e: java.io.IOException) {}
-                override fun onResponse(call: Call, response: Response) {
-                  try {
-                    val reply=JSONObject(response.body?.string()?:"").getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
-                    val act=sbn.notification.actions?.lastOrNull()?:return; val intent=android.content.Intent(); val bundle=Bundle(); bundle.putCharSequence(act.remoteInputs[0].resultKey, reply); android.app.RemoteInput.addResultsToIntent(act.remoteInputs, intent, bundle); act.actionIntent.send(this@AutoReplyService, 0, intent)
-                  } catch(e: Exception) {}
-                }
-              })
-            }
+              private val client=OkHttpClient()
+              override fun onNotificationPosted(sbn: StatusBarNotification) {
+                  if(sbn.packageName!="com.whatsapp" && sbn.packageName!="com.whatsapp.w4b") return
+                  val pref=getSharedPreferences("bot", Context.MODE_PRIVATE); val apiKey=pref.getString("api","")?:""; if(apiKey.isEmpty()) return
+                  val text=sbn.notification.extras.getCharSequence("android.text")?.toString()?:""; if(text.isEmpty()) return
+                  val biz=pref.getString("biz","online shop"); val prompt="You are AI for: $biz. Customer: $text. Reply short Bangla, add [AI Bot]."
+                  val json=JSONObject().put("contents", org.json.JSONArray().put(JSONObject().put("parts", org.json.JSONArray().put(JSONObject().put("text", prompt)))))
+                  val req=Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey").post(RequestBody.create("application/json".toMediaType(), json.toString())).build()
+                  client.newCall(req).enqueue(object: Callback {
+                      override fun onFailure(call: Call, e: java.io.IOException) {}
+                      override fun onResponse(call: Call, response: Response) {
+                          try { val reply=JSONObject(response.body?.string()?:"").getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text"); val act=sbn.notification.actions?.lastOrNull()?:return; val intent=android.content.Intent(); val bundle=Bundle(); bundle.putCharSequence(act.remoteInputs[0].resultKey, reply); android.app.RemoteInput.addResultsToIntent(act.remoteInputs, intent, bundle); act.actionIntent.send(this@AutoReplyService, 0, intent) } catch(e: Exception) {}
+                      }
+                  })
+              }
           }
-          ENDOFFILE
+          EOF
+          
           wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
           unzip -q gradle-8.4-bin.zip
-          ./gradle-8.4/bin/gradle :app:assembleDebug --no-daemon
+          ./gradle-8.4/bin/gradle :app:assembleDebug --no-daemon --info | tail -n 200
+          
       - uses: actions/upload-artifact@v4
         with:
           name: Real-AI-APK
