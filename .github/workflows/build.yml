@@ -1,4 +1,4 @@
-name: build-proper-2MB
+name: build-no-appcompat-final
 on: [push]
 jobs:
   build:
@@ -10,65 +10,52 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Build Real APK
+      - name: Build APK Without External Libs
         run: |
-          rm -rf app build .gradle gradle
+          rm -rf app build .gradle
           mkdir -p app/src/main/java/com/aisupplier/bot
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
-          
+
           echo "include ':app'" > settings.gradle
-          
+
           cat > build.gradle << 'EOF'
           buildscript {
               repositories { google(); mavenCentral() }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.2.2'
-              }
+              dependencies { classpath 'com.android.tools.build:gradle:7.4.2' }
           }
           allprojects { repositories { google(); mavenCentral() } }
           EOF
-          
+
           cat > app/build.gradle << 'EOF'
-          plugins { id 'com.android.application' }
+          apply plugin: 'com.android.application'
           android {
               namespace 'com.aisupplier.bot'
-              compileSdk 34
+              compileSdk 33
+              buildToolsVersion "33.0.1"
               defaultConfig {
                   applicationId "com.aisupplier.bot"
                   minSdk 24
-                  targetSdk 34
-                  versionCode 12
-                  versionName "12.0"
+                  targetSdk 33
+                  versionCode 13
+                  versionName "13.0"
               }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-              buildTypes {
-                  debug {
-                      minifyEnabled false
-                  }
-              }
-          }
-          dependencies {
-              implementation 'androidx.appcompat:appcompat:1.6.1'
           }
           EOF
-          
+
           cat > app/src/main/res/values/strings.xml << 'EOF'
           <resources><string name="app_name">Real AI Bot</string></resources>
           EOF
-          
-          cat > app/src/main/res/values/themes.xml << 'EOF'
-          <resources><style name="Theme.App" parent="android:Theme.Material.Light"></style></resources>
+
+          cat > app/src/main/res/values/colors.xml << 'EOF'
+          <resources><color name="white">#FFFFFF</color><color name="black">#000000</color></resources>
           EOF
-          
+
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.INTERNET"/>
-            <application android:theme="@style/Theme.App" android:label="Real AI Bot">
+            <application android:label="Real AI Bot">
               <activity android:name=".MainActivity" android:exported="true">
                 <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
               </activity>
@@ -78,16 +65,17 @@ jobs:
             </application>
           </manifest>
           EOF
-          
+
           cat > app/src/main/res/layout/activity_main.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Real AI Bot Setup" android:textSize="18sp" android:textStyle="bold"/>
             <EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Gemini API Key"/>
-            <EditText android:id="@+id/biz" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Business Info" android:minLines="4"/>
+            <EditText android:id="@+id/biz" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Business Info" android:minLines="3"/>
             <Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save &amp; Enable"/>
           </LinearLayout>
           EOF
-          
+
           cat > app/src/main/java/com/aisupplier/bot/MainActivity.java << 'EOF'
           package com.aisupplier.bot;
           import android.app.Activity; import android.content.Intent; import android.content.SharedPreferences; import android.os.Bundle; import android.widget.*;
@@ -97,47 +85,46 @@ jobs:
                   EditText api=findViewById(R.id.apiKey); EditText biz=findViewById(R.id.biz); Button btn=findViewById(R.id.save);
                   SharedPreferences pref=getSharedPreferences("bot", MODE_PRIVATE);
                   api.setText(pref.getString("api","")); biz.setText(pref.getString("biz",""));
-                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved! Now enable notification access",Toast.LENGTH_LONG).show(); });
+                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved! Now enable",Toast.LENGTH_LONG).show(); });
               }
           }
           EOF
-          
+
           cat > app/src/main/java/com/aisupplier/bot/AutoReplyService.java << 'EOF'
           package com.aisupplier.bot;
           import android.content.Intent; import android.content.SharedPreferences; import android.os.Bundle; import android.service.notification.NotificationListenerService; import android.service.notification.StatusBarNotification;
           import org.json.*; import java.io.*; import java.net.*;
           public class AutoReplyService extends NotificationListenerService {
               public void onNotificationPosted(StatusBarNotification sbn) {
-                  String pkg=sbn.getPackageName();
-                  if(!pkg.equals("com.whatsapp") && !pkg.equals("com.whatsapp.w4b")) return;
+                  if(!sbn.getPackageName().contains("whatsapp")) return;
                   SharedPreferences pref=getSharedPreferences("bot", MODE_PRIVATE);
                   String apiKey=pref.getString("api",""); if(apiKey.isEmpty()) return;
-                  String text=sbn.getNotification().extras.getCharSequence("android.text")!=null?sbn.getNotification().extras.getCharSequence("android.text").toString():""; if(text.isEmpty() || text.equals("[AI Bot]")) return;
+                  String text=sbn.getNotification().extras.getCharSequence("android.text")!=null?sbn.getNotification().extras.getCharSequence("android.text").toString():""; if(text.isEmpty()) return;
                   String biz=pref.getString("biz","online shop");
                   new Thread(()->{
                       try{
-                          String prompt="You are AI assistant for: "+biz+". Customer says: "+text+". Reply in short friendly Bangla. Add [AI Bot] at end.";
+                          String prompt="You are AI for: "+biz+". Customer: "+text+". Reply short Bangla, add [AI Bot]";
                           JSONObject j=new JSONObject(); j.put("contents", new JSONArray().put(new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", prompt)))));
                           URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="+apiKey);
                           HttpURLConnection conn=(HttpURLConnection)url.openConnection(); conn.setRequestMethod("POST"); conn.setRequestProperty("Content-Type","application/json"); conn.setDoOutput(true);
                           OutputStream os=conn.getOutputStream(); os.write(j.toString().getBytes()); os.close();
-                          BufferedReader br=new BufferedReader(new InputStreamReader(conn.getInputStream())); StringBuilder sb=new StringBuilder(); String line; while((line=br.readLine())!=null) sb.append(line);
+                          BufferedReader br=new BufferedReader(new InputStreamReader(conn.getInputStream())); StringBuilder sb=new StringBuilder(); String l; while((l=br.readLine())!=null) sb.append(l);
                           String reply=new JSONObject(sb.toString()).getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
                           android.app.Notification.Action act=sbn.getNotification().actions[sbn.getNotification().actions.length-1];
                           Intent intent=new Intent(); Bundle bundle=new Bundle(); bundle.putCharSequence(act.getRemoteInputs()[0].getResultKey(), reply);
                           android.app.RemoteInput.addResultsToIntent(act.getRemoteInputs(), intent, bundle); act.actionIntent.send(this,0,intent);
-                      }catch(Exception e){ e.printStackTrace(); }
+                      }catch(Exception e){}
                   }).start();
               }
           }
           EOF
-          
-          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
-          unzip -q gradle-8.4-bin.zip
-          ./gradle-8.4/bin/gradle :app:assembleDebug --no-daemon
+
+          wget -q https://services.gradle.org/distributions/gradle-7.6.3-bin.zip
+          unzip -q gradle-7.6.3-bin.zip
+          ./gradle-7.6.3/bin/gradle :app:assembleDebug --no-daemon
           ls -lh app/build/outputs/apk/debug/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Real-AI-APK-PROPER
+          name: Real-AI-APK-Fixed
           path: app/build/outputs/apk/debug/*.apk
