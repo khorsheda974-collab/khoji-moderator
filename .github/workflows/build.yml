@@ -1,4 +1,4 @@
-name: build-nolib-final-success
+name: build-final-installable
 on: [push]
 jobs:
   build:
@@ -13,6 +13,7 @@ jobs:
         run: |
           rm -rf app build .gradle
           mkdir -p app/src/main/java/com/aisupplier/bot
+          mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
           echo "include ':app'" > settings.gradle
           cat > build.gradle << 'EOF'
@@ -25,43 +26,51 @@ jobs:
           cat > app/build.gradle << 'EOF'
           apply plugin: 'com.android.application'
           android {
+              namespace 'com.aisupplier.bot.final18'
               compileSdkVersion 33
               defaultConfig {
-                  applicationId "com.aisupplier.bot.nolib"
+                  applicationId "com.aisupplier.bot.final18"
                   minSdkVersion 24
                   targetSdkVersion 33
-                  versionCode 17
-                  versionName "17.0"
+                  versionCode 18
+                  versionName "18.0"
               }
           }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.3.1'
+          }
+          EOF
+          cat > app/src/main/res/values/strings.xml << 'EOF'
+          <resources><string name="app_name">Real AI Bot</string></resources>
           EOF
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.aisupplier.bot.nolib">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.INTERNET"/>
-            <application android:label="Real AI Bot">
+            <application android:label="Real AI Bot" android:theme="@style/Theme.AppCompat.Light">
               <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
               <service android:name=".AutoReplyService" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true"><intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter></service>
             </application>
           </manifest>
           EOF
-          cat > app/src/main/res/values/strings.xml << 'EOF'
-          <resources><string name="app_name">Real AI Bot</string></resources>
+          cat > app/src/main/res/layout/activity_main.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp">
+            <EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Gemini API Key"/>
+            <EditText android:id="@+id/biz" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Business Info" android:minLines="3"/>
+            <Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save"/>
+          </LinearLayout>
           EOF
           cat > app/src/main/java/com/aisupplier/bot/MainActivity.java << 'EOF'
           package com.aisupplier.bot;
-          import android.app.Activity; import android.content.Intent; import android.content.SharedPreferences; import android.os.Bundle; import android.widget.*;
-          public class MainActivity extends Activity {
+          import android.content.Intent; import android.content.SharedPreferences; import android.os.Bundle; import android.widget.*; import androidx.appcompat.app.AppCompatActivity;
+          public class MainActivity extends AppCompatActivity {
               protected void onCreate(Bundle b) {
-                  super.onCreate(b);
-                  LinearLayout lay = new LinearLayout(this); lay.setOrientation(LinearLayout.VERTICAL); lay.setPadding(50,50,50,50);
-                  EditText api = new EditText(this); api.setHint("Gemini API Key");
-                  EditText biz = new EditText(this); biz.setHint("Business Info"); biz.setMinLines(3);
-                  Button btn = new Button(this); btn.setText("Save & Enable");
-                  lay.addView(api); lay.addView(biz); lay.addView(btn); setContentView(lay);
+                  super.onCreate(b); setContentView(R.layout.activity_main);
+                  EditText api=findViewById(R.id.apiKey); EditText biz=findViewById(R.id.biz); Button btn=findViewById(R.id.save);
                   SharedPreferences pref=getSharedPreferences("bot", MODE_PRIVATE);
                   api.setText(pref.getString("api","")); biz.setText(pref.getString("biz",""));
-                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved! Now enable",Toast.LENGTH_LONG).show(); });
+                  btn.setOnClickListener(v->{ pref.edit().putString("api", api.getText().toString()).putString("biz", biz.getText().toString()).apply(); startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); Toast.makeText(this,"Saved! Enable notification",Toast.LENGTH_LONG).show(); });
               }
           }
           EOF
@@ -97,5 +106,5 @@ jobs:
           ls -lh app/build/outputs/apk/debug/
       - uses: actions/upload-artifact@v4
         with:
-          name: Real-AI-APK-NoLib-Working
+          name: Real-AI-APK-2MB-FINAL
           path: app/build/outputs/apk/debug/*.apk
